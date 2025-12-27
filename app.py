@@ -1,9 +1,5 @@
 import streamlit as st
 import config
-from google_auth_oauthlib.flow import Flow
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-import json
 
 # import model
 from database import (
@@ -14,7 +10,7 @@ from database import (
 
 # import analytics
 from analytics.analyzer import FinanceAnalyzer
-from analytics.visualize import FinanceVisualizer
+from analytics.visualizer import FinanceVisualizer
 
 # import view module
 from views import (
@@ -49,110 +45,39 @@ st.set_page_config(
     page_icon = "🤑",
     layout = "wide"
 )
-
-# =============================================
-# Google OAuth Setup
-# =============================================
-
-GOOGLE_CLIENT_ID = st.secrets["GOOGLE_CLIENT_ID"]
-GOOGLE_CLIENT_SECRET = st.secrets["GOOGLE_CLIENT_SECRET"]
-REDIRECT_URI = st.secrets["REDIRECT_URI"]
-
-def login_with_google():
-    """Khởi tạo Google OAuth flow"""
-    flow = Flow.from_client_config(
-        {
-            "installed": {
-                "client_id": GOOGLE_CLIENT_ID,
-                "client_secret": GOOGLE_CLIENT_SECRET,
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": [REDIRECT_URI]
-            }
-        },
-        scopes=['https://www.googleapis.com/auth/userinfo.email',
-                'https://www.googleapis.com/auth/userinfo.profile']
-    )
-    
-    flow.redirect_uri = REDIRECT_URI
-    authorization_url, state = flow.authorization_url()
-    
-    return authorization_url, state, flow
-
-def login_screen():
-    """Hiển thị màn hình login"""
-    with st.container():
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            st.header("🔐 Finance Tracker")
-            st.subheader("Please login to continue")
-            
-            if st.button("🔵 Login with Google", use_container_width=True):
-                auth_url, state, flow = login_with_google()
-                st.session_state['auth_state'] = state
-                st.session_state['auth_flow'] = flow
-                st.markdown(f'<a href="{auth_url}" target="_blank">Click here if not redirected</a>', 
-                           unsafe_allow_html=True)
-                st.stop()
-
 # =============================================
 # 1. Authen User
 # =============================================
 
-# Kiểm tra xem user đã login hay chưa
-if "google_user" not in st.session_state:
-    st.session_state.google_user = None
+def login_screen():
+    with st.container():
+        st.header("This app is private")
+        st.subheader("Please login to continue")
+        st.button("Login with Google", on_click = st.login)
 
-# Nếu chưa login
-if st.session_state.google_user is None:
+
+if not st.user.is_logged_in:
     login_screen()
-    st.stop()
+else:
+    # Get mongo_user
+    user_model: UserModel = models['user']
+    try:
+        mongo_user_id = user_model.login(st.user.email)
+    except Exception as e:
+        st.error(f"Error during user login: {e}")
+        st.stop()
 
-# User đã login - Lấy thông tin từ session
-google_user = st.session_state.google_user
+    # set user_id for models
+    # currently we have category and transaction models
+    # you can optimize this by doing it in the model init function
+    models['category'].set_user_id(mongo_user_id)
+    models['transaction'].set_user_id(mongo_user_id)
 
-# =============================================
-# Login với MongoDB
-# =============================================
 
-user_model: UserModel = models['user']
-try:
-    mongo_user_id = user_model.login(google_user['email'])
-except Exception as e:
-    st.error(f"❌ Error during user login: {e}")
-    st.stop()
-
-# Set user_id cho models
-models['category'].set_user_id(mongo_user_id)
-models['transaction'].set_user_id(mongo_user_id)
-
-# Tạo user dict
-user = {
-    "email": google_user['email'],
-    "name": google_user.get('name', 'User'),
-    "picture": google_user.get('picture', ''),
-    "id": mongo_user_id
-}
-
-# =============================================
-# Sidebar - User Profile & Logout
-# =============================================
-
-with st.sidebar:
-    st.divider()
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        if user['picture']:
-            st.image(user['picture'], width=50)
-    with col2:
-        st.write(f"**{user['name']}**")
-        st.caption(user['email'])
-    
-    if st.button("🚪 Logout"):
-        st.session_state.google_user = None
-        st.rerun()
-    
-    st.divider()
+    user = st.user.to_dict() # convert google_user to dict
+    user.update({
+        "id": mongo_user_id
+    })
 
     # Display user profile after update user with mongo_user_id
     render_user_profile(user_model, user)
@@ -193,5 +118,3 @@ with st.sidebar:
 
         # display transaction views
         render_transactions(transaction_model=transaction_model, category_model=category_model)
-
-    
