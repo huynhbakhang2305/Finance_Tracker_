@@ -10,7 +10,7 @@ from database import (
 
 # import analytics
 from analytics.analyzer import FinanceAnalyzer
-from analytics.visualizer import FinanceVisualizer
+from analytics.visualize import FinanceVisualizer
 
 # import view module
 from views import (
@@ -118,3 +118,4 @@ else:
 
         # display transaction views
         render_transactions(transaction_model=transaction_model, category_model=category_model)
+
