@@ -1,9 +1,15 @@
 from pymongo import MongoClient, DESCENDING
 import config
-
+import os
 class DatabaseManager:
     _instance = None
+    def __init__(self):
+        uri = os.getenv("MONGO_URI")
+        if not uri:
+            raise ValueError("❌ MONGO_URI is not set")
 
+        self.client = MongoClient(uri)
+        self.db = self.client.get_default_database()
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(DatabaseManager, cls).__new__(cls)
@@ -50,4 +56,5 @@ if __name__=="__main__":
     # collections
     collection_name = "users"
     user_collection = test_db.get_collection(collection_name=collection_name)
+
     test_db.close_connection()
